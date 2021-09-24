@@ -2,7 +2,6 @@
  * Hash Utils adapted from PyTorch/XLA
  * https://github.com/pytorch/xla/blob/e0e5f937a0ba8d904f9608137dc8c51ba439df2d/third_party/xla_client/util.h
  */
-
 #pragma once
 
 #include <cstring>
@@ -10,10 +9,10 @@
 #include <string>
 #include <vector>
 
-#include "c10/core/Scalar.h"
-#include "c10/core/ScalarType.h"
-#include "torch/csrc/WindowsTorchApiMacro.h"
-#include "torch/csrc/lazy/core/int128.h"
+#include <c10/core/Scalar.h>
+#include <c10/core/ScalarType.h>
+#include <torch/csrc/WindowsTorchApiMacro.h>
+#include <torch/csrc/lazy/core/int128.h>
 
 namespace torch {
 namespace lazy {

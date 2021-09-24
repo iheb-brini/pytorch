@@ -1,7 +1,7 @@
-#include <sstream>
 #include <iomanip>
+#include <sstream>
 
-#include "torch/csrc/lazy/core/hash.h"
+#include <torch/csrc/lazy/core/hash.h>
 
 namespace torch {
 namespace lazy {
@@ -9,7 +9,7 @@ namespace {
 
 hash_t LoadHash(const uint8_t** data, const uint8_t* top) {
   std::ptrdiff_t size = top - (*data);
-  if (size >= sizeof(hash_t)) {
+  if (size >= (int)sizeof(hash_t)) {
     hash_t v;
     std::memcpy(&v, *data, sizeof(v));
     *data += sizeof(hash_t);
@@ -17,10 +17,9 @@ hash_t LoadHash(const uint8_t** data, const uint8_t* top) {
   }
   union {
     hash_t h;
-    uint8_t b[sizeof(hash_t)];
-  } uval;
-  uval.h = 0;
-  std::memcpy(uval.b, *data, size);
+    std::array<uint8_t, sizeof(hash_t)> b;
+  } uval = {.h = 0};
+  std::memcpy(uval.b.data(), *data, size);
   *data += size;
   return uval.h;
 }
@@ -79,4 +78,4 @@ std::string HexHash(const hash_t& a) {
 }
 
 } // namespace lazy
-} // namespace torchA
+} // namespace torch
