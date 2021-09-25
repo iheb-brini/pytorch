@@ -3,9 +3,10 @@
 #include <cstdint>
 #include <limits>
 
-#if (                                                                \
-    !defined(__BYTE_ORDER__) || !defined(__ORDER_LITTLE_ENDIAN__) || \
-    __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__)
+#if defined(_MSC_VER) && (defined(_M_X64) || defined(__x86_64__))
+// For MSVC, couldn't find a byte order macro
+#elif (!defined(__BYTE_ORDER__) || !defined(__ORDER_LITTLE_ENDIAN__) || \
+     __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__)
 #error "Only little endian supported"
 #endif
 
