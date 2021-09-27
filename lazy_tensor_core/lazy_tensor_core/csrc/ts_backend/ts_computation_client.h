@@ -1,12 +1,14 @@
 #pragma once
 
 #include "lazy_tensors/computation_client/computation_client.h"
+#include "torch/csrc/jit/runtime/graph_executor.h"
 
 namespace lazy_tensors {
 namespace compiler {
 
 class TSComputationClient : public ComputationClient {
   using Data = client::Data;
+  std::unordered_map<std::shared_ptr<torch::jit::Graph>, std::shared_ptr<torch::jit::GraphExecutor>> interpreters;
 
  public:
   struct TSData : public Data {
