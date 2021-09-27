@@ -99,6 +99,23 @@ CuSparseDnMatDescriptor::CuSparseDnMatDescriptor(const Tensor& input) {
   descriptor_.reset(raw_descriptor);
 }
 
+CuSparseDnVecDescriptor::CuSparseDnVecDescriptor(const Tensor& input) {
+  // cuSPARSE doesn't support batched vectors
+  TORCH_INTERNAL_ASSERT_DEBUG_ONLY(input.dim() == 1);
+
+  // cuSPARSE doesn't support non-contiguous vectors
+  TORCH_INTERNAL_ASSERT_DEBUG_ONLY(input.is_contiguous());
+  TORCH_INTERNAL_ASSERT_DEBUG_ONLY(input.is_non_overlapping_and_dense());
+
+  cudaDataType value_type = ScalarTypeToCudaDataType(input.scalar_type());
+  check_supported_cuda_type(value_type);
+
+  cusparseDnVecDescr_t raw_descriptor;
+  TORCH_CUDASPARSE_CHECK(cusparseCreateDnVec(
+      &raw_descriptor, input.numel(), input.data_ptr(), value_type));
+  descriptor_.reset(raw_descriptor);
+}
+
 CuSparseSpMatCsrDescriptor::CuSparseSpMatCsrDescriptor(const Tensor& input) {
   TORCH_INTERNAL_ASSERT_DEBUG_ONLY(input.is_sparse_csr());
   TORCH_INTERNAL_ASSERT_DEBUG_ONLY(input.dim() >= 2);

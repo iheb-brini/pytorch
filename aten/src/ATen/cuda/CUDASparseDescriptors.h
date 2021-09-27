@@ -42,6 +42,12 @@ class TORCH_CUDA_CPP_API CuSparseDnMatDescriptor
   CuSparseDnMatDescriptor(const Tensor& input);
 };
 
+class TORCH_CUDA_CPP_API CuSparseDnVecDescriptor
+    : public CuSparseDescriptor<cusparseDnVecDescr, &cusparseDestroyDnVec> {
+ public:
+  CuSparseDnVecDescriptor(const Tensor& input);
+};
+
 class TORCH_CUDA_CPP_API CuSparseSpMatDescriptor
     : public CuSparseDescriptor<cusparseSpMatDescr, &cusparseDestroySpMat> {};
 
