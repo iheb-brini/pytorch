@@ -400,6 +400,7 @@ class MinMaxObserver(_ObserverBase):
         quant_min=None,
         quant_max=None,
         factory_kwargs=None,
+        memoryless=False,
     ) -> None:
 
         # For x86 quantized kernels, we need to ensure that the vpmaddubsw
@@ -416,6 +417,7 @@ class MinMaxObserver(_ObserverBase):
             quant_max=quant_max,
             factory_kwargs=factory_kwargs,
         )
+        self.memoryless = memoryless
         factory_kwargs = torch.nn.factory_kwargs(factory_kwargs)
         self.register_buffer("min_val", torch.tensor(float("inf"), **factory_kwargs))
         self.register_buffer("max_val", torch.tensor(float("-inf"), **factory_kwargs))
@@ -433,6 +435,8 @@ class MinMaxObserver(_ObserverBase):
         r"""Records the running minimum and maximum of ``x``."""
         if x_orig.numel() == 0:
             return x_orig
+        elif self.memoryless:
+            self.reset_min_max_vals()
         x = x_orig.detach()  # avoid keeping autograd tape
         x = x.to(self.min_val.dtype)
         min_val_cur, max_val_cur = torch._aminmax(x)
@@ -454,8 +458,8 @@ class MinMaxObserver(_ObserverBase):
     @torch.jit.export
     def reset_min_max_vals(self):
         """Resets the min/max values."""
-        self.min_val = torch.tensor(float("inf"))
-        self.max_val = torch.tensor(float("-inf"))
+        self.min_val.copy_(torch.tensor(float("inf")))
+        self.max_val.copy_(torch.tensor(float("-inf")))
 
 class MovingAverageMinMaxObserver(MinMaxObserver):
     r"""Observer module for computing the quantization parameters based on the
@@ -509,6 +513,7 @@ class MovingAverageMinMaxObserver(MinMaxObserver):
         reduce_range=False,
         quant_min=None,
         quant_max=None,
+        memoryless=False,
         **kwargs
     ) -> None:
         self.averaging_constant = averaging_constant
@@ -518,6 +523,7 @@ class MovingAverageMinMaxObserver(MinMaxObserver):
             reduce_range=reduce_range,
             quant_min=quant_min,
             quant_max=quant_max,
+            memoryless=memoryless,
             **kwargs
         )
 
@@ -528,7 +534,7 @@ class MovingAverageMinMaxObserver(MinMaxObserver):
         x = x.to(self.min_val.dtype)
         min_val = self.min_val
         max_val = self.max_val
-        if min_val == float("inf") and max_val == float("-inf"):
+        if (min_val == float("inf") and max_val == float("-inf")) or self.memoryless:
             min_val, max_val = torch._aminmax(x)
         else:
             min_val_cur, max_val_cur = torch._aminmax(x)
@@ -576,6 +582,7 @@ class PerChannelMinMaxObserver(_ObserverBase):
         quant_min=None,
         quant_max=None,
         factory_kwargs=None,
+        memoryless=False,
     ) -> None:
         super(PerChannelMinMaxObserver, self).__init__(
             dtype=dtype,
@@ -585,6 +592,7 @@ class PerChannelMinMaxObserver(_ObserverBase):
             quant_max=quant_max,
             factory_kwargs=factory_kwargs,
         )
+        self.memoryless = memoryless
         factory_kwargs = torch.nn.factory_kwargs(factory_kwargs)
         self.ch_axis = ch_axis
         self.register_buffer("min_val", torch.tensor([], **factory_kwargs))
@@ -617,7 +625,7 @@ class PerChannelMinMaxObserver(_ObserverBase):
         # are done in place and types need to match for comparisons
         y = y.to(self.min_val.dtype)
         y = torch.flatten(y, start_dim=1)
-        if min_val.numel() == 0 or max_val.numel() == 0:
+        if min_val.numel() == 0 or max_val.numel() == 0 or self.memoryless:
             min_val, max_val = torch._aminmax(y, 1)
         else:
             min_val_cur, max_val_cur = torch._aminmax(y, 1)
@@ -756,6 +764,7 @@ class MovingAveragePerChannelMinMaxObserver(PerChannelMinMaxObserver):
         reduce_range=False,
         quant_min=None,
         quant_max=None,
+        memoryless=False,
         **kwargs
     ) -> None:
         super(MovingAveragePerChannelMinMaxObserver, self).__init__(
@@ -765,6 +774,7 @@ class MovingAveragePerChannelMinMaxObserver(PerChannelMinMaxObserver):
             reduce_range=reduce_range,
             quant_min=quant_min,
             quant_max=quant_max,
+            memoryless=memoryless,
             **kwargs
         )
         self.averaging_constant = averaging_constant
@@ -783,7 +793,7 @@ class MovingAveragePerChannelMinMaxObserver(PerChannelMinMaxObserver):
         new_axis_list[0] = self.ch_axis
         y = x.permute(new_axis_list)
         y = torch.flatten(y, start_dim=1)
-        if min_val.numel() == 0 or max_val.numel() == 0:
+        if min_val.numel() == 0 or max_val.numel() == 0 or self.memoryless:
             min_val, max_val = torch._aminmax(y, 1)
         else:
             min_val_cur, max_val_cur = torch._aminmax(y, 1)
@@ -832,6 +842,7 @@ class HistogramObserver(_ObserverBase):
         qscheme=torch.per_tensor_affine,
         reduce_range=False,
         factory_kwargs=None,
+        memoryless=False,
     ) -> None:
         # bins: The number of bins used for histogram calculation.
         super(HistogramObserver, self).__init__(
@@ -840,6 +851,7 @@ class HistogramObserver(_ObserverBase):
             reduce_range=reduce_range,
             factory_kwargs=factory_kwargs,
         )
+        self.memoryless = memoryless
         factory_kwargs = torch.nn.factory_kwargs(factory_kwargs)
         self.bins = bins
         self.register_buffer("histogram", torch.zeros(self.bins, **factory_kwargs))
@@ -1047,7 +1059,7 @@ class HistogramObserver(_ObserverBase):
         max_val = self.max_val
         same_values = min_val.item() == max_val.item()
         is_uninitialized = min_val == float("inf") and max_val == float("-inf")
-        if is_uninitialized or same_values:
+        if is_uninitialized or same_values or self.memoryless:
             min_val, max_val = torch._aminmax(x)
             self.min_val.resize_(min_val.shape)
             self.min_val.copy_(min_val)
