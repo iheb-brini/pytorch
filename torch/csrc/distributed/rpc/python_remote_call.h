@@ -16,6 +16,7 @@ class TORCH_API PythonRemoteCall : public RpcCommandBase {
       SerializedPyObj&& serializedPyObj,
       at::IValue retRRefId,
       at::IValue retForkId,
+      DeviceMap&& deviceMap,
       const bool isAsyncExecution);
 
   inline const SerializedPyObj& serializedPyObj() const {
@@ -34,6 +35,14 @@ class TORCH_API PythonRemoteCall : public RpcCommandBase {
     return isAsyncExecution_;
   }
 
+  DeviceMap&& moveDeviceMap() && {
+    return std::move(deviceMap_);
+  }
+
+  const DeviceMap& getDeviceMap() const {
+    return deviceMap_;
+  }
+
   c10::intrusive_ptr<Message> toMessageImpl() && override;
   static std::unique_ptr<PythonRemoteCall> fromMessage(const Message& message);
 
@@ -41,6 +50,7 @@ class TORCH_API PythonRemoteCall : public RpcCommandBase {
   SerializedPyObj serializedPyObj_;
   const at::IValue retRRefId_;
   const at::IValue retForkId_;
+  DeviceMap deviceMap_;
   const bool isAsyncExecution_;
 };
 

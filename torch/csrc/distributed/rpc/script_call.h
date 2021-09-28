@@ -21,11 +21,15 @@ using torch::jit::Operator;
 class TORCH_API ScriptCall : public RpcCommandBase {
  public:
   // Constructor for builitin operator call.
-  ScriptCall(std::shared_ptr<Operator> op, std::vector<at::IValue>&& stack);
+  ScriptCall(
+      std::shared_ptr<Operator> op,
+      std::vector<at::IValue>&& stack,
+      DeviceMap&& deviceMap);
   // Constructor for TorchScript function call.
   ScriptCall(
       const c10::QualifiedName& qualifiedName,
       std::vector<at::IValue>&& stack,
+      DeviceMap&& deviceMap,
       const bool isAsyncExecution = false);
 
   bool hasOp() const;
@@ -37,6 +41,14 @@ class TORCH_API ScriptCall : public RpcCommandBase {
   std::vector<at::IValue>& stackRef();
   inline bool isAsyncExecution() const {
     return isAsyncExecution_;
+  }
+
+  DeviceMap&& moveDeviceMap() && {
+    return std::move(deviceMap_);
+  }
+
+  const DeviceMap& getDeviceMap() const {
+    return deviceMap_;
   }
 
   c10::intrusive_ptr<Message> toMessageImpl() && override;
@@ -64,6 +76,9 @@ class TORCH_API ScriptCall : public RpcCommandBase {
   c10::optional<const c10::QualifiedName> qualifiedName_;
   std::vector<at::IValue> stack_;
   const bool isAsyncExecution_;
+
+ protected:
+  DeviceMap deviceMap_;
 };
 
 } // namespace rpc

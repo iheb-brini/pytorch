@@ -180,14 +180,16 @@ std::string PyRRef::ownerName() const {
   return rref_->ownerName();
 }
 
-py::object PyRRef::toHere(const float timeoutSeconds) const {
+py::object PyRRef::toHere(
+    const DeviceMap& deviceMap,
+    const float timeoutSeconds) const {
   if (rref_->isOwner()) {
     return localValue();
   } else {
     // toHere() calls python_rpc_handler which acquires GIL when UserRRef holds
     // a python object
     IValue value = c10::static_intrusive_pointer_cast<UserRRef>(rref_)->toHere(
-        timeoutSeconds);
+        deviceMap, timeoutSeconds);
 
     if (rref_->isPyObj()) {
       // python_rpc_handler deserialization will acquires GIL.
@@ -245,6 +247,7 @@ std::string PyRRef::str() const {
 
 py::object PyRRef::createRRefProxy(
     const RRefProxyType& type,
+    DeviceMap& deviceMap,
     float timeoutSeconds) const {
   auto& pythonRpcHandler = PythonRpcHandler::getInstance();
   pybind11::gil_scoped_acquire ag;
@@ -252,13 +255,13 @@ py::object PyRRef::createRRefProxy(
   auto& ctor = functions.rrefProxyCtor_;
   switch (type) {
     case RRefProxyType::RPC_SYNC: {
-      return ctor(*this, functions.rpcSync_, timeoutSeconds);
+      return ctor(*this, functions.rpcSync_, deviceMap, timeoutSeconds);
     }
     case RRefProxyType::RPC_ASYNC: {
-      return ctor(*this, functions.rpcAsync_, timeoutSeconds);
+      return ctor(*this, functions.rpcAsync_, deviceMap, timeoutSeconds);
     }
     case RRefProxyType::REMOTE: {
-      return ctor(*this, functions.remote_, timeoutSeconds);
+      return ctor(*this, functions.remote_, deviceMap, timeoutSeconds);
     }
     default: {
       TORCH_INTERNAL_ASSERT(false, "Unrecognized RRefProxy type ", type);

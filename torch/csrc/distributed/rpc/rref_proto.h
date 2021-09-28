@@ -49,13 +49,15 @@ class TORCH_API ForkMessageBase : public RRefMessageBase {
 // UserRRef uses this message to fetch the remote RRef value from the owner.
 class TORCH_API ScriptRRefFetchCall final : public RRefMessageBase {
  public:
-  ScriptRRefFetchCall(worker_id_t fromWorkerId, const RRefId& rrefId)
+  ScriptRRefFetchCall(
+      worker_id_t fromWorkerId,
+      const RRefId& rrefId,
+      DeviceMap&& deviceMap)
       : RRefMessageBase(rrefId, MessageType::SCRIPT_RREF_FETCH_CALL),
-        fromWorkerId_(fromWorkerId) {}
+        fromWorkerId_(fromWorkerId),
+        deviceMap_(std::move(deviceMap)) {}
 
-  inline worker_id_t fromWorkerId() const {
-    return fromWorkerId_;
-  }
+  const DeviceMap& getDeviceMap() const;
 
   c10::intrusive_ptr<Message> toMessageImpl() && override;
   static std::unique_ptr<ScriptRRefFetchCall> fromMessage(
@@ -63,13 +65,20 @@ class TORCH_API ScriptRRefFetchCall final : public RRefMessageBase {
 
  private:
   const worker_id_t fromWorkerId_;
+  DeviceMap deviceMap_;
 };
 
 class TORCH_API PythonRRefFetchCall final : public RRefMessageBase {
  public:
-  PythonRRefFetchCall(worker_id_t fromWorkerId, const RRefId& rrefId)
+  PythonRRefFetchCall(
+      worker_id_t fromWorkerId,
+      const RRefId& rrefId,
+      DeviceMap&& deviceMap)
       : RRefMessageBase(rrefId, MessageType::PYTHON_RREF_FETCH_CALL),
-        fromWorkerId_(fromWorkerId) {}
+        fromWorkerId_(fromWorkerId),
+        deviceMap_(std::move(deviceMap)) {}
+
+  const DeviceMap& getDeviceMap() const;
 
   c10::intrusive_ptr<Message> toMessageImpl() && override;
   static std::unique_ptr<PythonRRefFetchCall> fromMessage(
@@ -77,36 +86,55 @@ class TORCH_API PythonRRefFetchCall final : public RRefMessageBase {
 
  private:
   const worker_id_t fromWorkerId_;
+  DeviceMap deviceMap_;
 };
 
 // OwnerRRef uses this message to send the RRef value to a remote UserRRef
 class TORCH_API RRefFetchRet : public RpcCommandBase {
  public:
-  RRefFetchRet(std::vector<at::IValue> values, MessageType type)
-      : values_(std::move(values)), type_(type) {}
+  RRefFetchRet(
+      std::vector<at::IValue> values,
+      MessageType type,
+      DeviceMap&& deviceMap)
+      : values_(std::move(values)),
+        type_(type),
+        deviceMap_(std::move(deviceMap)) {}
 
   const std::vector<at::IValue>& values();
   c10::intrusive_ptr<Message> toMessageImpl() && override;
 
- private:
+ protected:
   std::vector<at::IValue> values_;
   const MessageType type_;
+  DeviceMap deviceMap_;
 };
 
 class TORCH_API ScriptRRefFetchRet final : public RRefFetchRet {
  public:
-  explicit ScriptRRefFetchRet(std::vector<at::IValue> values)
-      : RRefFetchRet(std::move(values), MessageType::SCRIPT_RREF_FETCH_RET) {}
+  explicit ScriptRRefFetchRet(
+      std::vector<at::IValue> values,
+      DeviceMap deviceMap)
+      : RRefFetchRet(
+            std::move(values),
+            MessageType::SCRIPT_RREF_FETCH_RET,
+            std::move(deviceMap)) {}
 
+  c10::intrusive_ptr<Message> toMessageImpl() && override;
   static std::unique_ptr<ScriptRRefFetchRet> fromMessage(
       const Message& message);
 };
 
 class TORCH_API PythonRRefFetchRet final : public RRefFetchRet {
  public:
-  explicit PythonRRefFetchRet(std::vector<at::IValue> values)
-      : RRefFetchRet(std::move(values), MessageType::PYTHON_RREF_FETCH_RET) {}
+  explicit PythonRRefFetchRet(
+      std::vector<at::IValue> values,
+      DeviceMap deviceMap)
+      : RRefFetchRet(
+            std::move(values),
+            MessageType::PYTHON_RREF_FETCH_RET,
+            std::move(deviceMap)) {}
 
+  c10::intrusive_ptr<Message> toMessageImpl() && override;
   static std::unique_ptr<PythonRRefFetchRet> fromMessage(
       const Message& message);
 };

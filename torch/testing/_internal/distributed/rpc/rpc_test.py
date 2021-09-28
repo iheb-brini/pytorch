@@ -10,6 +10,7 @@ from collections import namedtuple
 from functools import partial
 from threading import Event
 from threading import Lock
+from typing import Dict, Tuple
 from unittest import mock
 
 import torch
@@ -691,6 +692,295 @@ class MyParameterServer:
                     result = self.total / float(self.trainers)
                     fut.set_result(result)
         return fut
+
+
+def _test_expected_device(t: torch.Tensor, expected_device: torch.device):
+    return t.device == expected_device
+
+
+_test_expected_device_jit = torch.jit.script(_test_expected_device)
+
+
+def _create_empty_tensor(sizes: Tuple[int], device: torch.device):
+    return torch.empty(sizes, device=device)
+
+
+_create_empty_tensor_jit = torch.jit.script(_create_empty_tensor)
+
+
+def _rpc_async_test_callee_device_py_py(dst: str, device_map: Dict[torch.device, torch.device],
+                                        original_device: torch.device, expected_device: torch.device):
+    return rpc.rpc_async(
+        dst,
+        _test_expected_device,
+        args=(torch.empty(1, device=original_device), expected_device),
+        device_map=device_map
+    ).wait()
+
+
+def _rpc_async_test_callee_device_py_jit(dst: str, device_map: Dict[torch.device, torch.device],
+                                         original_device: torch.device, expected_device: torch.device):
+    return rpc.rpc_async(
+        dst,
+        _test_expected_device_jit,
+        args=(torch.empty(1, device=original_device), expected_device),
+        device_map=device_map
+    ).wait()
+
+
+@torch.jit.script
+def _rpc_async_test_callee_device_jit_jit(dst: str, device_map: Dict[torch.device, torch.device],
+                                          original_device: torch.device, expected_device: torch.device):
+    return rpc.rpc_async(
+        dst,
+        _test_expected_device_jit,
+        (torch.empty((1,), device=original_device), expected_device),
+        {},
+        device_map
+    ).wait()
+
+
+def _rpc_sync_test_callee_device_py_py(dst: str, device_map: Dict[torch.device, torch.device],
+                                       original_device: torch.device, expected_device: torch.device):
+    return rpc.rpc_sync(
+        dst,
+        _test_expected_device,
+        args=(torch.empty(1, device=original_device), expected_device),
+        device_map=device_map
+    )
+
+
+def _rpc_sync_test_callee_device_py_jit(dst: str, device_map: Dict[torch.device, torch.device],
+                                        original_device: torch.device, expected_device: torch.device):
+    return rpc.rpc_sync(
+        dst,
+        _test_expected_device_jit,
+        args=(torch.empty(1, device=original_device), expected_device),
+        device_map=device_map
+    )
+
+
+@torch.jit.script
+def _rpc_sync_test_callee_device_jit_jit(dst: str, device_map: Dict[torch.device, torch.device],
+                                         original_device: torch.device, expected_device: torch.device):
+    return rpc.rpc_sync(
+        dst,
+        _test_expected_device_jit,
+        (torch.empty((1,), device=original_device), expected_device),
+        {},
+        device_map
+    )
+
+
+def _rpc_remote_test_callee_device_py_py(dst: str, device_map: Dict[torch.device, torch.device],
+                                         original_device: torch.device, expected_device: torch.device):
+    return rpc.remote(
+        dst,
+        _test_expected_device,
+        args=(torch.empty(1, device=original_device), expected_device),
+        device_map=device_map
+    ).to_here()
+
+
+def _rpc_remote_test_callee_device_py_jit(dst: str, device_map: Dict[torch.device, torch.device],
+                                          original_device: torch.device, expected_device: torch.device):
+    return rpc.remote(
+        dst,
+        _test_expected_device_jit,
+        args=(torch.empty(1, device=original_device), expected_device),
+        device_map=device_map
+    ).to_here()
+
+
+@torch.jit.script
+def _rpc_remote_test_callee_device_jit_jit(dst: str, device_map: Dict[torch.device, torch.device],
+                                           original_device: torch.device, expected_device: torch.device):
+    return rpc.remote(
+        dst,
+        _test_expected_device_jit,
+        (torch.empty((1,), device=original_device), expected_device),
+        {},
+        device_map
+    ).to_here()
+
+
+def _rpc_to_here_test_caller_device_py_buildin(dst: str, device_map: Dict[torch.device, torch.device],
+                                               original_device: torch.device):
+    return rpc.remote(
+        dst,
+        torch.empty,
+        args=((1,),),
+        kwargs={"device": original_device}
+    ).to_here(device_map).device
+
+
+def _rpc_to_here_test_caller_device_py_py(dst: str, device_map: Dict[torch.device, torch.device],
+                                          original_device: torch.device):
+    return rpc.remote(
+        dst,
+        _create_empty_tensor,
+        args=((1,), original_device)
+    ).to_here(device_map).device
+
+
+def _rpc_to_here_timeout_dm_test_caller_device_py_py(dst: str, device_map: Dict[torch.device, torch.device],
+                                                     original_device: torch.device):
+    return rpc.remote(
+        dst,
+        _create_empty_tensor,
+        args=((1,), original_device)
+    ).to_here(timeout=1000.0, device_map=device_map).device
+
+
+def _rpc_to_here_dm_timeout_test_caller_device_py_py(dst: str, device_map: Dict[torch.device, torch.device],
+                                                     original_device: torch.device):
+    return rpc.remote(
+        dst,
+        _create_empty_tensor,
+        args=((1,), original_device)
+    ).to_here(timeout=1000.0, device_map=device_map).device
+
+
+def _rpc_to_here_test_caller_device_py_jit(dst: str, device_map: Dict[torch.device, torch.device],
+                                           original_device: torch.device):
+    return rpc.remote(
+        dst,
+        _create_empty_tensor_jit,
+        args=((1,), original_device)
+    ).to_here(device_map).device
+
+
+@torch.jit.script
+def _rpc_to_here_timeout_test_caller_device_jit_jit(dst: str, device_map: Dict[torch.device, torch.device],
+                                                    original_device: torch.device):
+    return rpc.remote(
+        dst,
+        _create_empty_tensor_jit,
+        ((1,), original_device)
+    ).to_here(1000.0, device_map).device
+
+
+@torch.jit.script
+def _rpc_to_here_test_caller_device_jit_jit(dst: str, device_map: Dict[torch.device, torch.device],
+                                            original_device: torch.device):
+    return rpc.remote(
+        dst,
+        _create_empty_tensor_jit,
+        ((1,), original_device)
+    ).to_here(device_map).device
+
+
+def _rpc_sync_test_caller_device_py_buildin(dst: str, device_map: Dict[torch.device, torch.device],
+                                            original_device: torch.device):
+    return rpc.rpc_sync(
+        dst,
+        torch.empty,
+        args=((1,),),
+        kwargs={"device": original_device},
+        device_map=device_map
+    ).device
+
+
+def _rpc_sync_test_caller_device_py_py(dst: str, device_map: Dict[torch.device, torch.device],
+                                       original_device: torch.device):
+    return rpc.rpc_sync(
+        dst,
+        _create_empty_tensor,
+        args=((1,), original_device),
+        device_map=device_map
+    ).device
+
+
+def _rpc_sync_test_caller_device_py_jit(dst: str, device_map: Dict[torch.device, torch.device],
+                                        original_device: torch.device):
+    return rpc.rpc_sync(
+        dst,
+        _create_empty_tensor_jit,
+        args=((1,), original_device),
+        device_map=device_map
+    ).device
+
+
+@torch.jit.script
+def _rpc_sync_test_caller_device_jit_jit(dst: str, device_map: Dict[torch.device, torch.device],
+                                         original_device: torch.device):
+    return rpc.rpc_sync(
+        dst,
+        _create_empty_tensor_jit,
+        ((1,), original_device),
+        {},
+        device_map
+    ).device
+
+
+def _rpc_async_test_caller_device_py_buildin(dst: str, device_map: Dict[torch.device, torch.device],
+                                             original_device: torch.device):
+    return rpc.rpc_async(
+        dst,
+        torch.empty,
+        args=((1,),),
+        kwargs={"device": original_device},
+        device_map=device_map
+    ).wait().device
+
+
+def _rpc_async_test_caller_device_py_py(dst: str, device_map: Dict[torch.device, torch.device],
+                                        original_device: torch.device):
+    return rpc.rpc_async(
+        dst,
+        _create_empty_tensor,
+        args=((1,), original_device),
+        device_map=device_map
+    ).wait().device
+
+
+def _rpc_async_test_caller_device_py_jit(dst: str, device_map: Dict[torch.device, torch.device],
+                                         original_device: torch.device):
+    return rpc.rpc_async(
+        dst,
+        _create_empty_tensor_jit,
+        args=((1,), original_device),
+        device_map=device_map
+    ).wait().device
+
+
+@torch.jit.script
+def _rpc_async_test_caller_device_jit_jit(dst: str, device_map: Dict[torch.device, torch.device],
+                                          original_device: torch.device):
+    return rpc.rpc_async(
+        dst,
+        _create_empty_tensor_jit,
+        ((1,), original_device),
+        {},
+        device_map
+    ).wait().device
+
+
+def _rref_async_test_callee_device_py_py(dst: str, device_map: Dict[torch.device, torch.device],
+                                         original_device: torch.device, expected_device: torch.device):
+    model = rpc.remote(dst, nn.Linear, args=(10, 10))
+    model = model.remote().to(expected_device)
+    y = model.rpc_async(device_map={original_device: expected_device}).forward(
+        torch.randn(10, device=original_device)).wait()
+    return y.device == original_device
+
+
+def _rref_sync_test_callee_device_py_py(dst: str, device_map: Dict[torch.device, torch.device],
+                                        original_device: torch.device, expected_device: torch.device):
+    model = rpc.remote(dst, nn.Linear, args=(10, 10))
+    model = model.remote().to(expected_device)
+    y = model.rpc_sync(device_map={original_device: expected_device}).forward(torch.randn(10, device=original_device))
+    return y.device == original_device
+
+
+def _rref_remote_test_callee_device_py_py(dst: str, device_map: Dict[torch.device, torch.device],
+                                          original_device: torch.device, expected_device: torch.device):
+    model = rpc.remote(dst, nn.Linear, args=(10, 10))
+    model = model.remote().to(expected_device)
+    y = model.remote(device_map={original_device: expected_device}).forward(torch.randn(
+        10, device=original_device)).to_here(device_map={original_device: expected_device})
+    return y.device == original_device
+
 
 
 class RpcTest(RpcAgentTestFixture):
@@ -4794,7 +5084,7 @@ class FaultyAgentRpcTest(RpcAgentTestFixture):
             with self.assertRaisesRegex(RuntimeError, expected_error):
                 # to_here() should raise timeout error, since it does not know about the
                 # status of rpc.remote().
-                slow_rref.to_here(0.001)
+                slow_rref.to_here(timeout=0.001)
         # Note: If we proceed with shutdown, UserRRef will send out a RRefUserDelete
         # but this can be a noop since it may not exist on the owner yet. Later,
         # the owner can process the RRef creation and wait for the delete message,
@@ -4864,7 +5154,7 @@ class FaultyAgentRpcTest(RpcAgentTestFixture):
         )
         expected_error = self.get_timeout_error_regex()
         with self.assertRaisesRegex(RuntimeError, expected_error):
-            rref.to_here(0.01)
+            rref.to_here(timeout=0.01)
 
         rref.to_here()
 
@@ -6478,5 +6768,192 @@ class TensorPipeAgentCudaRpcTest(RpcAgentTestFixture):
         rref.rpc_sync().increase(1)
         ret = rref.rpc_sync().sum()
         self.assertEqual(ret, 42)
+
+        rpc.shutdown()
+
+    def _test_device_on_callee(self, test_fn):
+        dst = worker_name((self.rank + 1) % self.world_size)
+        options = self.rpc_backend_options
+        if self.rank == 0:
+            options.set_device_map(dst, {"cuda:0": "cuda:1"})
+        elif self.rank == 1:
+            options.set_devices(["cuda:1", "cuda:2"])
+        rpc.init_rpc(
+            name=worker_name(self.rank),
+            backend=self.rpc_backend,
+            rank=self.rank,
+            world_size=self.world_size,
+            rpc_backend_options=options,
+        )
+
+        if self.rank == 0:
+            self.assertTrue(
+                test_fn(dst, {}, torch.device("cuda:0"), torch.device("cuda:1"))
+            )
+            self.assertTrue(
+                test_fn(dst, {torch.device("cuda:0"): torch.device("cuda:2")},
+                        torch.device("cuda:0"), torch.device("cuda:2"))
+            )
+
+        rpc.shutdown()
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_async_callee_device_py_py(self):
+        self._test_device_on_callee(_rpc_async_test_callee_device_py_py)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_async_callee_device_py_jit(self):
+        self._test_device_on_callee(_rpc_async_test_callee_device_py_jit)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_async_callee_device_jit_jit(self):
+        self._test_device_on_callee(_rpc_async_test_callee_device_jit_jit)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_sync_callee_device_py_py(self):
+        self._test_device_on_callee(_rpc_sync_test_callee_device_py_py)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_sync_callee_device_py_jit(self):
+        self._test_device_on_callee(_rpc_sync_test_callee_device_py_jit)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_sync_callee_device_jit_jit(self):
+        self._test_device_on_callee(_rpc_sync_test_callee_device_jit_jit)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_remote_callee_device_py_py(self):
+        self._test_device_on_callee(_rpc_remote_test_callee_device_py_py)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_remote_callee_device_py_jit(self):
+        self._test_device_on_callee(_rpc_remote_test_callee_device_py_jit)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_remote_callee_device_jit_jit(self):
+        self._test_device_on_callee(_rpc_remote_test_callee_device_jit_jit)
+
+    def _test_device_on_caller(self, create_fn):
+        dst = worker_name((self.rank + 1) % self.world_size)
+        options = self.rpc_backend_options
+        if self.rank == 0:
+            options.set_device_map(dst, {"cuda:0": "cuda:1"})
+            options.set_devices(["cuda:0", "cuda:2"])
+        elif self.rank == 1:
+            options.set_device_map(dst, {"cuda:1": "cuda:0"})
+        rpc.init_rpc(
+            name=worker_name(self.rank),
+            backend=self.rpc_backend,
+            rank=self.rank,
+            world_size=self.world_size,
+            rpc_backend_options=options,
+        )
+
+        if self.rank == 0:
+            self.assertEqual(
+                create_fn(dst, {}, "cuda:1"),
+                torch.device("cuda:0")
+            )
+            self.assertEqual(
+                create_fn(dst, {torch.device(2): torch.device(1)}, "cuda:1"),
+                torch.device("cuda:2")
+            )
+
+        rpc.shutdown()
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_to_here_caller_device_py_buildin(self):
+        self._test_device_on_caller(_rpc_to_here_test_caller_device_py_buildin)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_to_here_caller_device_py_py(self):
+        self._test_device_on_caller(_rpc_to_here_test_caller_device_py_py)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_to_here_timeout_dm_caller_device_py_py(self):
+        self._test_device_on_caller(_rpc_to_here_timeout_dm_test_caller_device_py_py)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_to_here_dm_timeout_caller_device_py_py(self):
+        self._test_device_on_caller(_rpc_to_here_dm_timeout_test_caller_device_py_py)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_to_here_caller_device_py_jit(self):
+        self._test_device_on_caller(_rpc_to_here_test_caller_device_py_jit)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_to_here_caller_device_jit_jit(self):
+        self._test_device_on_caller(_rpc_to_here_test_caller_device_jit_jit)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_to_here_timeout_caller_device_jit_jit(self):
+        self._test_device_on_caller(_rpc_to_here_timeout_test_caller_device_jit_jit)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_sync_caller_device_py_buildin(self):
+        self._test_device_on_caller(_rpc_sync_test_caller_device_py_buildin)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_sync_caller_device_py_py(self):
+        self._test_device_on_caller(_rpc_sync_test_caller_device_py_py)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_sync_caller_device_py_jit(self):
+        self._test_device_on_caller(_rpc_sync_test_caller_device_py_jit)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_sync_caller_device_jit_jit(self):
+        self._test_device_on_caller(_rpc_sync_test_caller_device_jit_jit)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_async_caller_device_py_buildin(self):
+        self._test_device_on_caller(_rpc_async_test_caller_device_py_buildin)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_async_caller_device_py_py(self):
+        self._test_device_on_caller(_rpc_async_test_caller_device_py_py)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_async_caller_device_py_jit(self):
+        self._test_device_on_caller(_rpc_async_test_caller_device_py_jit)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rpc_async_caller_device_jit_jit(self):
+        self._test_device_on_caller(_rpc_async_test_caller_device_jit_jit)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rref_async_callee_device_py_py(self):
+        self._test_device_on_callee(_rref_async_test_callee_device_py_py)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rref_sync_callee_device_py_py(self):
+        self._test_device_on_callee(_rref_sync_test_callee_device_py_py)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rref_remote_callee_device_py_py(self):
+        self._test_device_on_callee(_rref_remote_test_callee_device_py_py)
+
+    @skip_if_lt_x_gpu(3)
+    def test_my_device_map_rref_backward(self):
+        dst = worker_name((self.rank + 1) % self.world_size)
+        options = self.rpc_backend_options
+        if self.rank == 0:
+            options.set_device_map(dst, {"cuda:0": "cuda:1"})
+        elif self.rank == 1:
+            options.set_devices(["cuda:1", "cuda:2"])
+        rpc.init_rpc(
+            name=worker_name(self.rank),
+            backend=self.rpc_backend,
+            rank=self.rank,
+            world_size=self.world_size,
+            rpc_backend_options=options,
+        )
+
+        if self.rank == 0:
+            model = rpc.remote(dst, nn.Linear, args=(10, 1))
+            model = model.remote().to(2)
+            with dist_autograd.context() as context_id:
+                y = model.remote(device_map={torch.device(0): torch.device(2)}).forward(torch.randn(10, device=0))
+                y.backward(context_id)
 
         rpc.shutdown()

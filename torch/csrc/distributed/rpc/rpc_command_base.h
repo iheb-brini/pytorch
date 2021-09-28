@@ -1,7 +1,9 @@
 #pragma once
 
 #include <torch/csrc/distributed/rpc/message.h>
+#include <torch/csrc/distributed/rpc/rpc_agent.h>
 #include <torch/csrc/distributed/rpc/types.h>
+#include <torch/csrc/jit/serialization/pickle.h>
 
 namespace torch {
 namespace distributed {

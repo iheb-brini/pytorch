@@ -48,7 +48,9 @@ std::unique_ptr<RpcCommandBase> deserializePythonRpcCommandReference(
     case MessageType::PYTHON_CALL: {
       auto& pc = static_cast<PythonCall&>(rpc);
       return std::make_unique<UnpickledPythonCall>(
-          pc.serializedPyObj(), pc.isAsyncExecution());
+          pc.serializedPyObj(),
+          std::move(pc).moveDeviceMap(),
+          pc.isAsyncExecution());
     }
     case MessageType::PYTHON_REMOTE_CALL: {
       auto& prc = static_cast<PythonRemoteCall&>(rpc);
@@ -56,6 +58,7 @@ std::unique_ptr<RpcCommandBase> deserializePythonRpcCommandReference(
           prc.serializedPyObj(),
           prc.retRRefId(),
           prc.retForkId(),
+          std::move(prc).moveDeviceMap(),
           prc.isAsyncExecution());
     }
     case MessageType::FORWARD_AUTOGRAD_REQ: {
@@ -100,6 +103,15 @@ SerializedPyObj serializePyObject(IValue value) {
     PyErr_Clear();
     throw err;
   }
+}
+
+// TODO(pbelevich)
+DeviceMap reverse(const DeviceMap& deviceMap) {
+  DeviceMap reversed;
+  for (const auto& entry : deviceMap) {
+    reversed.insert({entry.second, entry.first});
+  }
+  return reversed;
 }
 
 } // anonymous namespace
@@ -160,7 +172,7 @@ c10::intrusive_ptr<JitFuture> RequestCallbackImpl::processScriptCall(
     RpcCommandBase& rpc,
     std::vector<c10::Stream> streams) const {
   auto& scriptCall = static_cast<ScriptCall&>(rpc);
-
+  DeviceMap reversed_dm = reverse(scriptCall.getDeviceMap());
   c10::intrusive_ptr<JitFuture> future;
   if (scriptCall.hasOp()) {
     future = runJitOperator(
@@ -174,8 +186,9 @@ c10::intrusive_ptr<JitFuture> RequestCallbackImpl::processScriptCall(
   }
 
   return future->then(
-      [](JitFuture& jitFuture) {
-        return withStorages(ScriptResp(jitFuture.value()).toMessage());
+      [reversed_dm = std::move(reversed_dm)](JitFuture& jitFuture) {
+        return withStorages(
+            ScriptResp(jitFuture.value(), std::move(reversed_dm)).toMessage());
       },
       c10::getCustomClassType<c10::intrusive_ptr<Message>>());
 }
@@ -184,13 +197,16 @@ c10::intrusive_ptr<JitFuture> RequestCallbackImpl::processPythonCall(
     RpcCommandBase& rpc,
     std::vector<c10::Stream> streams) const {
   auto& upc = static_cast<UnpickledPythonCall&>(rpc);
+  DeviceMap reversed_dm = reverse(upc.getDeviceMap());
   auto future = runPythonFunction(
       upc.pythonUdf(), std::move(streams), upc.isAsyncExecution());
 
   return future->then(
-      [](JitFuture& future) {
+      [reversed_dm = std::move(reversed_dm)](JitFuture& future) {
         return withStorages(
-            PythonResp(serializePyObject(future.value())).toMessage());
+            PythonResp(
+                serializePyObject(future.value()), std::move(reversed_dm))
+                .toMessage());
       },
       c10::getCustomClassType<c10::intrusive_ptr<Message>>());
 }
@@ -233,14 +249,16 @@ c10::intrusive_ptr<JitFuture> RequestCallbackImpl::processPythonRemoteCall(
 c10::intrusive_ptr<JitFuture> RequestCallbackImpl::processPythonRRefFetchCall(
     RpcCommandBase& rpc) const {
   auto& prf = static_cast<PythonRRefFetchCall&>(rpc);
-
+  DeviceMap reversed_dm = reverse(prf.getDeviceMap());
   auto future = retrieveOwnerRRef(prf.rrefId());
 
   return future->then(
-      [](JitFuture& future) {
+      [reversed_dm = std::move(reversed_dm)](JitFuture& future) {
         SerializedPyObj result = serializePyObject(future.value());
         return withStorages(
-            PythonRRefFetchRet(std::move(result).toIValues()).toMessage());
+            PythonRRefFetchRet(
+                std::move(result).toIValues(), std::move(reversed_dm))
+                .toMessage());
       },
       c10::getCustomClassType<c10::intrusive_ptr<Message>>());
 }
